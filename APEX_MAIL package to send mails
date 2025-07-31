@@ -1,0 +1,55 @@
+declare
+l_var varchar2(2000);
+cursor c1 is select result from (select 
+line_category_code||','||sum(ordered_quantity * unit_selling_price) result, 2 sort_order
+from apps.oe_order_lines_all 
+where 
+floW_status_code not in ('CLOSED', 'CANCELLED') 
+group by 
+line_category_code
+union
+select 'Line Category Code'||','||'Amount' result, 1 sort_order from dual)
+order by sort_order;  -- end of the cursor
+l_clob_data   CLOB;    -- CLOB to convert
+l_blob_data   BLOB;
+l_mail_id number;
+
+v_dest_offset  INTEGER := 1;
+v_src_offset   INTEGER := 1;
+v_lang_context INTEGER := DBMS_LOB.DEFAULT_LANG_CTX;
+v_warning      INTEGER := DBMS_LOB.WARN_INCONVERTIBLE_CHAR;
+begin
+open c1;
+loop
+fetch c1 into l_var;
+if c1%isopen and c1%found then
+--dbms_output.put_line('Employee Concatenated Data :'||' '||l_var);
+--l_blob := l_blob||chr(10)||l_var;
+l_clob_data := l_clob_data||chr(10)||l_var;
+end if;
+exit when c1%notfound;
+end loop;
+dbms_output.put_line('The Clob data as follows : '||l_clob_data);
+
+DBMS_LOB.CREATETEMPORARY(LOB_LOC => l_blob_data, CACHE => FALSE);
+DBMS_LOB.CONVERTTOBLOB(dest_lob     => l_blob_data,
+                         src_clob     => l_clob_data,
+                         amount       => DBMS_LOB.LOBMAXSIZE,
+                         dest_offset  => v_dest_offset,
+                         src_offset   => v_src_offset,
+                         blob_csid    => DBMS_LOB.DEFAULT_CSID,
+                         lang_context => v_lang_context,
+                         warning      => v_warning);
+DBMS_OUTPUT.PUT_LINE('BLOB Length: ' || DBMS_LOB.GETLENGTH(l_blob_data));
+
+l_mail_id := apex_mail.send(p_to => 'kakumanu.rohith@syntax.com',
+							p_from => 'kakumanu.rohith@syntax.com',
+							p_body => 'Syntax Sample Message Body',
+							p_subj => 'Syntax Sample Mail Subject');
+apex_mail.add_attachment(p_mail_id => l_mail_id,
+						 p_attachment => l_blob_data,
+						 p_filename => 'Syntax_Sample_Report_Ouptut.csv',
+						 p_mime_type => 'text/csv');
+
+commit;
+end;
